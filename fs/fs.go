@@ -16,6 +16,8 @@ package fs
 
 import (
 	"errors"
+	"fmt"
+	"hash/crc64"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -23,16 +25,24 @@ import (
 	"github.com/hashicorp/vault/api"
 )
 
+var table = crc64.MakeTable(crc64.ISO)
+
+func HashInode(path string, dt fuse.DirentType) uint64 {
+	contents := fmt.Sprintf("%d:%s", dt, path)
+	ret := crc64.Checksum([]byte(contents), table)
+	return ret
+}
+
 // VaultFS is a vault filesystem
 type VaultFS struct {
 	*api.Client
-	root       string
+	prefix     string
 	conn       *fuse.Conn
 	mountpoint string
 }
 
 // New returns a new VaultFS
-func New(config *api.Config, mountpoint, token, root string) (*VaultFS, error) {
+func New(config *api.Config, mountpoint, token, prefix string) (*VaultFS, error) {
 	client, err := api.NewClient(config)
 	if err != nil {
 		return nil, err
@@ -41,7 +51,7 @@ func New(config *api.Config, mountpoint, token, root string) (*VaultFS, error) {
 
 	return &VaultFS{
 		Client:     client,
-		root:       root,
+		prefix:     prefix,
 		mountpoint: mountpoint,
 	}, nil
 }
@@ -92,5 +102,17 @@ func (v *VaultFS) Unmount() error {
 // Root returns the struct that does the actual work
 func (v *VaultFS) Root() (fs.Node, error) {
 	logrus.Debug("returning root")
-	return NewRoot(v.root, v.Logical()), nil
+	var name string = ""
+
+	dir := &Dir{
+		Node: Node{
+			inode: HashInode(name, fuse.DT_Dir),
+			name:  name,
+
+			prefix: v.prefix,
+		},
+		logic: v.Logical(),
+	}
+
+	return dir, nil
 }

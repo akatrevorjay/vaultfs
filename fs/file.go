@@ -23,20 +23,31 @@ import (
 	"golang.org/x/net/context"
 )
 
-// Secret implements Node and Handle
-type Secret struct {
-	*api.Secret
-	inode uint64
+// File implements Node and Handle
+type File struct {
+	Node
+
+	Secret *api.Secret
 }
 
-// Attr returns attributes about this Secret
-func (s Secret) Attr(ctx context.Context, a *fuse.Attr) error {
-	a.Inode = s.inode
-	a.Mode = 0444
-
-	content, err := s.ReadAll(ctx)
+func (f *File) getSize(ctx context.Context) (size uint64, err error) {
+	content, err := f.Secret.ReadAll(ctx)
 	if err != nil {
 		logrus.WithError(err).Error("could not determine content length")
+		return nil, err
+	}
+
+	size = uint64(len(content))
+	return size, nil
+}
+
+// Attr returns attributes about this File
+func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
+	a.Inode = f.inode
+	a.Mode = 0444
+
+	size, err := f.getSize(ctx)
+	if err != nil {
 		return fuse.EIO
 	}
 
@@ -44,7 +55,7 @@ func (s Secret) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
-// ReadAll gets the content of this Secret
-func (s Secret) ReadAll(ctx context.Context) ([]byte, error) {
-	return json.Marshal(s)
+// ReadAll gets the content of this File
+func (s *File) ReadAll(ctx context.Context) ([]byte, error) {
+	return json.MarshalIndent(s, "", 2)
 }
